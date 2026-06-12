@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ResidueGuard | Digital Farm Management Portal</title>
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/css/style.css">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+    <!-- ==================== LOGIN CONTAINER ==================== -->
+    <div id="login-container" class="login-layout">
+        <div class="login-card">
+            <div class="login-brand">
+                <div class="brand-logo">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                        <path d="M12 8v8"/>
+                        <path d="M8 12h8"/>
+                    </svg>
+                </div>
+                <span class="brand-name">ResidueGuard</span>
+            </div>
+            
+            <!-- Sign In Panel -->
+            <div id="login-form-wrapper" class="auth-panel-active">
+                <h2 class="login-heading">Sign in to Farm Portal</h2>
+                <form id="form-login" onsubmit="submitLogin(event)">
+                    <div class="form-group">
+                        <label class="form-label">Username</label>
+                        <input type="text" id="login-username" class="form-input" placeholder="e.g. admin" required autocomplete="username">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 20px;">
+                        <label class="form-label">Password</label>
+                        <input type="password" id="login-password" class="form-input" placeholder="••••••••" required autocomplete="current-password">
+                    </div>
+                    
+                    <div id="login-error-msg" class="login-error" style="display: none; color: var(--color-rose); font-size: 13px; margin-bottom: 16px; font-weight: 500;">
+                        Invalid username or password
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center; height: 44px;">
+                        Sign In
+                    </button>
+                </form>
+                <div style="margin-top: 20px; text-align: center; font-size: 13px; color: var(--text-secondary);">
+                    Don't have an account? <a href="#" onclick="toggleAuthForms(event)" style="color: var(--color-primary); text-decoration: none; font-weight: 600;">Register here</a>
+                </div>
+            </div>
+
+            <!-- Registration Panel -->
+            <div id="register-form-wrapper" style="display: none;">
+                <h2 class="login-heading">Create Standard Account</h2>
+                <form id="form-register" onsubmit="submitRegister(event)">
+                    <div class="form-group">
+                        <label class="form-label">Username</label>
+                        <input type="text" id="register-username" class="form-input" placeholder="e.g. vet_assistant" required minlength="3">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Password</label>
+                        <input type="password" id="register-password" class="form-input" placeholder="Min 4 characters" required minlength="4">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 20px;">
+                        <label class="form-label">Confirm Password</label>
+                        <input type="password" id="register-confirm-password" class="form-input" placeholder="••••••••" required minlength="4">
+                    </div>
+                    
+                    <div id="register-success-msg" style="display: none; color: var(--color-emerald); font-size: 13px; margin-bottom: 16px; font-weight: 500; text-align: center;"></div>
+                    <div id="register-error-msg" style="display: none; color: var(--color-rose); font-size: 13px; margin-bottom: 16px; font-weight: 500; text-align: center;"></div>
+                    
+                    <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center; height: 44px;">
+                        Register Account
+                    </button>
+                </form>
+                <div style="margin-top: 20px; text-align: center; font-size: 13px; color: var(--text-secondary);">
+                    Already have an account? <a href="#" onclick="toggleAuthForms(event)" style="color: var(--color-primary); text-decoration: none; font-weight: 600;">Sign in here</a>
+                </div>
+            </div>
+            
+            <div class="login-hint">
+                <p>Default Accounts:</p>
+                <p>Admin: <strong>admin</strong> / admin123</p>
+                <p>User: <strong>employe</strong> / worker</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== MAIN APP CONTAINER ==================== -->
+    <div id="app-container" class="app-layout" style="display: none;">
+        
+        <!-- SIDEBAR NAVIGATION -->
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand-logo">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                        <path d="M12 8v8"/>
+                        <path d="M8 12h8"/>
+                    </svg>
+                </div>
+                <span class="brand-name">ResidueGuard</span>
+            </div>
+
+            <ul class="nav-menu">
+                <li class="nav-item active" data-view="dashboard">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="7" height="9" rx="1"/>
+                        <rect x="14" y="3" width="7" height="5" rx="1"/>
+                        <rect x="14" y="12" width="7" height="9" rx="1"/>
+                        <rect x="3" y="16" width="7" height="5" rx="1"/>
+                    </svg>
+                    Dashboard
+                </li>
+                <li class="nav-item" data-view="livestock">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                        <circle cx="9" cy="7" r="4"/>
+                        <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                    </svg>
+                    Livestock Registry
+                </li>
+                <li class="nav-item" data-view="treatments">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                    </svg>
+                    Treatment Logs
+                </li>
+                <li class="nav-item" data-view="drugs">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4.8 15.2a6 6 0 1 1 8.5 8.5l-8.5-8.5Z"/>
+                        <path d="m14.2 14.2 4.8-4.8"/>
+                        <path d="M15.2 4.8a6 6 0 1 1 8.5 8.5l-8.5-8.5Z"/>
+                    </svg>
+                    Drug Database
+                </li>
+                <li class="nav-item" data-view="analytics">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="20" x2="18" y2="10"/>
+                        <line x1="12" y1="20" x2="12" y2="4"/>
+                        <line x1="6" y1="20" x2="6" y2="14"/>
+                    </svg>
+                    Analytics & Reports
+                </li>
+            </ul>
+
+            <div class="user-profile">
+                <div class="avatar" id="user-avatar">AD</div>
+                <div class="user-info" style="flex-grow: 1;">
+                    <span class="username" id="user-display-name">Admin</span>
+                    <span class="role" id="user-display-role">Administrator</span>
+                </div>
+                <button class="logout-btn" onclick="triggerLogout()" title="Sign Out">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                        <polyline points="16 17 21 12 16 7"/>
+                        <line x1="21" y1="12" x2="9" y2="12"/>
+                    </svg>
+                </button>
+            </div>
+        </aside>
+
+        <!-- MAIN VIEWPORT -->
+        <main class="main-content">
+            
+            <!-- HEADER -->
+            <header class="header">
+                <div>
+                    <h1 class="header-title" id="view-title">Dashboard Overview</h1>
+                </div>
+                <div class="header-actions">
+                    <div class="time-widget">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                        </svg>
+                        <span id="current-time">-</span>
+                    </div>
+                    <button class="btn btn-primary admin-only" onclick="openModal('modal-log-treatment')">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                        </svg>
+                        Log Treatment
+                    </button>
+                </div>
+            </header>
+
+            <!-- DYNAMIC ALERTS BAR (SLIDEOUT WARNINGS) -->
+            <div class="alerts-container" id="global-alerts-bar">
+                <div class="alerts-header">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    CRITICAL WARNING: ACTIVE WITHDRAWAL PERIODS
+                </div>
+                <div class="alerts-list" id="global-alerts-list">
+                    <!-- Populated dynamically via JS -->
+                </div>
+            </div>
+
+            <!-- 1. DASHBOARD VIEW -->
+            <section id="view-dashboard" class="content-view active">
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div class="metric-header">
+                            <span>Overall AMU Index</span>
+                            <div class="metric-icon primary">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                            </div>
+                        </div>
+                        <div class="metric-value" id="stat-amu-index">0.00</div>
+                        <div class="metric-sub">mg drug / kg livestock weight (30d)</div>
+                    </div>
+                    
+                    <div class="metric-card">
+                        <div class="metric-header">
+                            <span>MRL Compliance Rate</span>
+                            <div class="metric-icon emerald">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                            </div>
+                        </div>
+                        <div class="metric-value" id="stat-compliance-rate">100.0%</div>
+                        <div class="metric-sub">Cleared withdrawal before harvest</div>
+                    </div>
+
+                    <div class="metric-card">
+                        <div class="metric-header">
+                            <span>Active Treatments</span>
+                            <div class="metric-icon blue">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+                            </div>
+                        </div>
+                        <div class="metric-value" id="stat-active-treatments">0</div>
+                        <div class="metric-sub">Animals currently receiving dosage</div>
+                    </div>
+
+                    <div class="metric-card">
+                        <div class="metric-header">
+                            <span>In Withdrawal Period</span>
+                            <div class="metric-icon amber">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                            </div>
+                        </div>
+                        <div class="metric-value" id="stat-in-withdrawal">0</div>
+                        <div class="metric-sub">Withheld from market / slaughter</div>
+                    </div>
+                </div>
+
+                <div class="dashboard-grid">
+                    <div class="dashboard-panel">
+                        <div class="panel-title">
+                            <span>Antimicrobial Administration Trend</span>
+                            <span style="font-size: 12px; color: var(--text-muted);">Past 6 Months</span>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="dashboardAMUChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-panel">
+                        <div class="panel-title">Active Alerts & Status</div>
+                        <div class="table-container" style="border: none;">
+                            <table class="custom-table" style="font-size: 13px;">
+                                <thead>
+                                    <tr>
+                                        <th>Tag ID</th>
+                                        <th>Status</th>
+                                        <th>Action Required</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="dashboard-quick-status">
+                                    <!-- Populated dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 2. LIVESTOCK VIEW -->
+            <section id="view-livestock" class="content-view">
+                <div class="actions-bar">
+                    <div class="filters-group">
+                        <input type="text" placeholder="Search by Tag ID..." class="search-input" id="search-livestock-tag" oninput="filterLivestock()">
+                        <select class="select-filter" id="filter-livestock-species" onchange="filterLivestock()">
+                            <option value="ALL">All Species</option>
+                            <option value="Cattle">Cattle</option>
+                            <option value="Swine">Swine</option>
+                            <option value="Sheep">Sheep</option>
+                            <option value="Poultry">Poultry</option>
+                        </select>
+                        <select class="select-filter" id="filter-livestock-status" onchange="filterLivestock()">
+                            <option value="ALL">All Statuses</option>
+                            <option value="Healthy">Healthy</option>
+                            <option value="Treated">Treated</option>
+                            <option value="In Withdrawal">In Withdrawal</option>
+                            <option value="Quarantine">Quarantine</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-secondary admin-only" onclick="openModal('modal-add-livestock')">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        Register Livestock
+                    </button>
+                </div>
+
+                <div class="table-container">
+                    <table class="custom-table">
+                        <thead>
+                            <tr>
+                                <th>Tag ID</th>
+                                <th>Species</th>
+                                <th>Breed</th>
+                                <th>Weight (kg)</th>
+                                <th>Location / Pen</th>
+                                <th>Compliance Status</th>
+                                <th>Safe Release Date</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="livestock-table-body">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- 3. TREATMENTS VIEW -->
+            <section id="view-treatments" class="content-view">
+                <div class="actions-bar">
+                    <div class="filters-group">
+                        <input type="text" placeholder="Search Tag or Vet..." class="search-input" id="search-treatment-tag" oninput="filterTreatments()">
+                        <select class="select-filter" id="filter-treatment-status" onchange="filterTreatments()">
+                            <option value="ALL">All States</option>
+                            <option value="Active Treatment">Active Treatment</option>
+                            <option value="In Withdrawal">In Withdrawal</option>
+                            <option value="Cleared">Cleared</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-primary admin-only" onclick="openModal('modal-log-treatment')">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        Log Medication Event
+                    </button>
+                </div>
+
+                <div class="table-container">
+                    <table class="custom-table">
+                        <thead>
+                            <tr>
+                                <th>Animal Tag</th>
+                                <th>Medication (Drug)</th>
+                                <th>Dosage Rate</th>
+                                <th>Total Administered</th>
+                                <th>End Date</th>
+                                <th>Withdrawal (Days)</th>
+                                <th>MRL Release Date</th>
+                                <th>State</th>
+                                <th>Telemetry</th>
+                            </tr>
+                        </thead>
+                        <tbody id="treatments-table-body">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- 4. DRUG DATABASE VIEW -->
+            <section id="view-drugs" class="content-view">
+                <div class="actions-bar">
+                    <div></div>
+                    <button class="btn btn-secondary admin-only" onclick="openModal('modal-add-drug')">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        Add Drug Reference
+                    </button>
+                </div>
+
+                <div class="table-container">
+                    <table class="custom-table">
+                        <thead>
+                            <tr>
+                                <th>Drug Brand Name</th>
+                                <th>Active Ingredient</th>
+                                <th>Drug Class</th>
+                                <th>WHO Stewardship Level</th>
+                                <th>Withdrawal (Meat / Milk / Eggs)</th>
+                                <th>MRL Limit (ppb)</th>
+                                <th>Half Life (Hours)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="drugs-table-body">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- 5. ANALYTICS VIEW -->
+            <section id="view-analytics" class="content-view">
+                <div class="dashboard-grid">
+                    <div class="dashboard-panel">
+                        <div class="panel-title">Antimicrobial Volume by Drug Class (mg)</div>
+                        <div class="chart-container">
+                            <canvas id="analyticsClassChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-panel">
+                        <div class="panel-title">WHO Stewardship Classification (mg)</div>
+                        <div class="chart-container">
+                            <canvas id="analyticsWHOChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dashboard-panel" style="margin-top: 12px;">
+                    <div class="panel-title">Stewardship & Auditing Export</div>
+                    <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: 20px; max-width: 800px;">
+                        Generate a fully-detailed farm treatment log compliant with veterinary record-keeping rules and residue testing safety protocols. This data includes withdrawal periods, clearance times, and calculated active ingredient loads.
+                    </p>
+                    <div style="display: flex; gap: 12px;">
+                        <button class="btn btn-primary" onclick="exportData('csv')">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            Export Treatment Logs (CSV)
+                        </button>
+                        <button class="btn btn-secondary" onclick="exportData('json')">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            Export Audit Trail (JSON)
+                        </button>
+                    </div>
+                </div>
+            </section>
+            
+        </main>
+    </div>
+
+    <!-- ==================== MODALS ==================== -->
+
+    <!-- MODAL: REGISTER LIVESTOCK -->
+    <div class="modal-overlay" id="modal-add-livestock">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h3 class="modal-title">Register Livestock Group/Animal</h3>
+                <button class="modal-close" onclick="closeModal('modal-add-livestock')">&times;</button>
+            </div>
+            <form id="form-add-livestock" onsubmit="submitLivestock(event)">
+                <div class="modal-body">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label class="form-label">Animal Tag ID *</label>
+                            <input type="text" class="form-input" id="new-l-tag" placeholder="e.g. LIV-C-1025" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Species *</label>
+                            <select class="form-input" id="new-l-species" required>
+                                <option value="Cattle">Cattle</option>
+                                <option value="Swine">Swine</option>
+                                <option value="Sheep">Sheep</option>
+                                <option value="Poultry">Poultry</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Breed *</label>
+                            <input type="text" class="form-input" id="new-l-breed" placeholder="e.g. Holstein / Angus" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Weight (kg) *</label>
+                            <input type="number" step="0.1" class="form-input" id="new-l-weight" placeholder="e.g. 520" required>
+                        </div>
+                        <div class="form-group full-width">
+                            <label class="form-label">Pen / Location *</label>
+                            <input type="text" class="form-input" id="new-l-pen" placeholder="e.g. Pen B-3" required>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-add-livestock')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Register Animal</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: REGISTER DRUG REFERENCE -->
+    <div class="modal-overlay" id="modal-add-drug">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h3 class="modal-title">Add Drug Reference Sheet</h3>
+                <button class="modal-close" onclick="closeModal('modal-add-drug')">&times;</button>
+            </div>
+            <form id="form-add-drug" onsubmit="submitDrug(event)">
+                <div class="modal-body">
+                    <div class="form-grid">
+                        <div class="form-group full-width">
+                            <label class="form-label">Drug Brand Name *</label>
+                            <input type="text" class="form-input" id="new-d-name" placeholder="e.g. Baytril 100" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Active Ingredient *</label>
+                            <input type="text" class="form-input" id="new-d-ingredient" placeholder="e.g. Enrofloxacin" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Drug Class *</label>
+                            <input type="text" class="form-input" id="new-d-class" placeholder="e.g. Fluoroquinolones / Penicillins" required>
+                        </div>
+                        <div class="form-group full-width">
+                            <label class="form-label">WHO Stewardship Rating *</label>
+                            <select class="form-input" id="new-d-classification" required>
+                                <option value="Highest Priority Critically Important">Highest Priority Critically Important (HPCIA)</option>
+                                <option value="High Priority Critically Important">High Priority Critically Important (HPIA)</option>
+                                <option value="Highly Important">Highly Important (HIA)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Meat Withdrawal (Days) *</label>
+                            <input type="number" class="form-input" id="new-d-w-meat" min="0" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Milk Withdrawal (Days)</label>
+                            <input type="number" class="form-input" id="new-d-w-milk" min="0" value="0">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Eggs Withdrawal (Days)</label>
+                            <input type="number" class="form-input" id="new-d-w-eggs" min="0" value="0">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">MRL Residue Limit (ppb) *</label>
+                            <input type="number" step="0.1" class="form-input" id="new-d-mrl" placeholder="e.g. 100 mcg/kg" required>
+                        </div>
+                        <div class="form-group full-width">
+                            <label class="form-label">Residue Elimination Half-Life (Hours) *</label>
+                            <input type="number" step="0.1" class="form-input" id="new-d-halflife" placeholder="e.g. 18.5" required>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-add-drug')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Add Drug Reference</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: LOG TREATMENT -->
+    <div class="modal-overlay" id="modal-log-treatment">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h3 class="modal-title">Log Treatment Event</h3>
+                <button class="modal-close" onclick="closeModal('modal-log-treatment')">&times;</button>
+            </div>
+            <form id="form-log-treatment" onsubmit="submitTreatment(event)">
+                <div class="modal-body">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label class="form-label">Livestock ID (Tag) *</label>
+                            <select class="form-input" id="treat-l-id" required>
+                                <!-- Populated dynamically -->
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Veterinary Drug *</label>
+                            <select class="form-input" id="treat-d-id" required>
+                                <!-- Populated dynamically -->
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Dosage Rate (mg/kg) *</label>
+                            <input type="number" step="0.01" class="form-input" id="treat-dosage" placeholder="e.g. 10.5" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Administration Route *</label>
+                            <select class="form-input" id="treat-route" required>
+                                <option value="Intramuscular">Intramuscular (IM)</option>
+                                <option value="Subcutaneous">Subcutaneous (SC)</option>
+                                <option value="Oral">Oral (PO)</option>
+                                <option value="Topical">Topical</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Treatment Start Date & Time *</label>
+                            <input type="datetime-local" class="form-input" id="treat-start" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Treatment End Date & Time *</label>
+                            <input type="datetime-local" class="form-input" id="treat-end" required>
+                        </div>
+                        <div class="form-group full-width">
+                            <label class="form-label">Prescribing Veterinarian *</label>
+                            <input type="text" class="form-input" id="treat-vet" placeholder="e.g. Dr. Sarah Jenkins" required>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-log-treatment')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Log Treatment</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: RESIDUE DECAY CURVE -->
+    <div class="modal-overlay" id="modal-decay-curve">
+        <div class="modal-container large">
+            <div class="modal-header">
+                <div>
+                    <h3 class="modal-title" id="decay-title">MRL Residue Decay Model</h3>
+                    <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Dynamic pharmacokinetic prediction based on half-life clearance</p>
+                </div>
+                <button class="modal-close" onclick="closeModal('modal-decay-curve')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="decay-meta-grid">
+                    <div class="decay-meta-item">
+                        <span class="decay-meta-label">Animal ID</span>
+                        <span class="decay-meta-val" id="decay-meta-animal">-</span>
+                    </div>
+                    <div class="decay-meta-item">
+                        <span class="decay-meta-label">Veterinary Drug</span>
+                        <span class="decay-meta-val" id="decay-meta-drug">-</span>
+                    </div>
+                    <div class="decay-meta-item">
+                        <span class="decay-meta-label">Half-Life</span>
+                        <span class="decay-meta-val" id="decay-meta-halflife">-</span>
+                    </div>
+                    <div class="decay-meta-item">
+                        <span class="decay-meta-label">MRL Limit</span>
+                        <span class="decay-meta-val" id="decay-meta-mrl">-</span>
+                    </div>
+                    <div class="decay-meta-item">
+                        <span class="decay-meta-label">Withdrawal Days</span>
+                        <span class="decay-meta-val" id="decay-meta-withdrawal">-</span>
+                    </div>
+                    <div class="decay-meta-item">
+                        <span class="decay-meta-label">Treatment End</span>
+                        <span class="decay-meta-val" id="decay-meta-end">-</span>
+                    </div>
+                </div>
+                <div class="chart-container" style="height: 350px;">
+                    <canvas id="decayModelChart"></canvas>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('modal-decay-curve')">Close Model</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom JS script -->
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
