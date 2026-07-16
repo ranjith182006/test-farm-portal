@@ -18,18 +18,21 @@ async function apiFetch(url, options = {}) {
         
         if (response.status === 401) {
             currentUser = null;
+            hidePageLoader(); // Dismiss stuck page loader on redirect
             document.getElementById('app-container').style.display = 'none';
             document.getElementById('login-container').style.display = 'flex';
             return null;
         }
         
         if (response.status === 403) {
-            alert("Action Forbidden: Administrator privileges required.");
+            hidePageLoader(); // Dismiss stuck page loader on forbidden
+            showToast("Action Forbidden", "Administrator privileges required to perform this action.", "error");
             throw new Error("Forbidden access");
         }
         
         return response;
     } catch (err) {
+        hidePageLoader(); // Dismiss stuck page loader on network error
         console.error("API Fetch Error:", err);
         throw err;
     }
@@ -150,13 +153,245 @@ function formatDate(dateStr) {
 
 // -------------------- AUTHENTICATION LOGIC --------------------
 
+// Custom Toast notifications
+function showToast(title, message, type = 'info', duration = 5000) {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+
+    let iconSvg = '';
+    if (type === 'info') {
+        iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`;
+    } else if (type === 'success') {
+        iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+    } else if (type === 'warning') {
+        iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
+    } else if (type === 'error') {
+        iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+    }
+
+    toast.innerHTML = `
+        <div class="toast-icon">${iconSvg}</div>
+        <div class="toast-content">
+            <div class="toast-title">${title}</div>
+            <div class="toast-message">${message}</div>
+        </div>
+        <button class="toast-close">&times;</button>
+    `;
+
+    container.appendChild(toast);
+
+    // Trigger reflow
+    toast.offsetHeight;
+    toast.classList.add('show');
+
+    const closeBtn = toast.querySelector('.toast-close');
+    closeBtn.addEventListener('click', () => {
+        dismissToast(toast);
+    });
+
+    const timeout = setTimeout(() => {
+        dismissToast(toast);
+    }, duration);
+
+    toast.dataset.timeoutId = timeout;
+}
+
+function dismissToast(toast) {
+    if (toast.classList.contains('hide')) return;
+    clearTimeout(toast.dataset.timeoutId);
+    toast.classList.remove('show');
+    toast.classList.add('hide');
+    toast.addEventListener('transitionend', () => {
+        toast.remove();
+    });
+}
+
+// User Data Caching and Self-Healing Backup/Restore
+async function backupAllUserData() {
+    if (!currentUser) return;
+    const username = currentUser.username;
+    try {
+        const drugsRes = await fetch('/api/drugs');
+        const livestockRes = await fetch('/api/livestock');
+        const treatmentsRes = await fetch('/api/treatments');
+        
+        if (drugsRes.ok && livestockRes.ok && treatmentsRes.ok) {
+            const drugs = await drugsRes.json();
+            const livestock = await livestockRes.json();
+            const treatments = await treatmentsRes.json();
+            
+            const backup = { drugs, livestock, treatments };
+            localStorage.setItem(`residueguard_data_backup_${username}`, JSON.stringify(backup));
+            console.log(`Backed up farm data for user: ${username}`);
+        }
+    } catch (err) {
+        console.error("Failed to backup user data:", err);
+    }
+}
+
+async function restoreUserData(username) {
+    const backupStr = localStorage.getItem(`residueguard_data_backup_${username}`);
+    if (!backupStr) {
+        showToast("Restore Skipped", "No cached data found for this account.", "info");
+        return;
+    }
+    
+    let backup;
+    try {
+        backup = JSON.parse(backupStr);
+    } catch (e) {
+        console.error("Failed to parse backup:", e);
+        return;
+    }
+    
+    const { drugs = [], livestock = [], treatments = [] } = backup;
+    if (drugs.length === 0 && livestock.length === 0 && treatments.length === 0) {
+        showToast("Restore Skipped", "No farm records to restore.", "info");
+        return;
+    }
+    
+    showToast("Restoring Records", "Re-importing your custom drug sheets, animals, and treatment history...", "info", 6000);
+    
+    // 1. Restore Drugs
+    const drugIdMap = {};
+    try {
+        const existingDrugsRes = await fetch('/api/drugs');
+        const existingDrugs = existingDrugsRes.ok ? await existingDrugsRes.json() : [];
+        
+        for (const drug of drugs) {
+            const match = existingDrugs.find(d => d.name.toLowerCase() === drug.name.toLowerCase());
+            if (match) {
+                drugIdMap[drug.id] = match.id;
+            } else {
+                const res = await fetch('/api/drugs', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(drug)
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    drugIdMap[drug.id] = data.id;
+                }
+            }
+        }
+    } catch (err) {
+        console.error("Failed to restore drugs:", err);
+    }
+    
+    // 2. Restore Livestock
+    const livestockIdMap = {};
+    try {
+        const existingLRes = await fetch('/api/livestock');
+        const existingL = existingLRes.ok ? await existingLRes.json() : [];
+        
+        for (const animal of livestock) {
+            const match = existingL.find(a => a.tag_id.toLowerCase() === animal.tag_id.toLowerCase());
+            if (match) {
+                livestockIdMap[animal.id] = match.id;
+            } else {
+                const res = await fetch('/api/livestock', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(animal)
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    livestockIdMap[animal.id] = data.id;
+                }
+            }
+        }
+    } catch (err) {
+        console.error("Failed to restore livestock:", err);
+    }
+    
+    // 3. Restore Treatments
+    let restoredTreatmentsCount = 0;
+    try {
+        for (const t of treatments) {
+            const newDrugId = drugIdMap[t.drug_id];
+            const newLivestockId = livestockIdMap[t.livestock_id];
+            
+            if (newDrugId && newLivestockId) {
+                const res = await fetch('/api/treatments', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        livestock_id: newLivestockId,
+                        drug_id: newDrugId,
+                        dosage_mg_per_kg: t.dosage_mg_per_kg,
+                        route: t.route,
+                        start_date: t.start_date,
+                        end_date: t.end_date,
+                        vet_name: t.vet_name
+                    })
+                });
+                if (res.ok) {
+                    restoredTreatmentsCount++;
+                }
+            }
+        }
+    } catch (err) {
+        console.error("Failed to restore treatments:", err);
+    }
+    
+    showToast("Recovery Finished", `Recovered ${Object.keys(drugIdMap).length} drugs, ${Object.keys(livestockIdMap).length} animals, and ${restoredTreatmentsCount} treatments successfully.`, "success", 7000);
+    
+    // Reload dashboard
+    loadDashboard();
+}
+
+// Page Loader controls
+function showPageLoader(text) {
+    const loader = document.getElementById('page-loader');
+    const statusText = document.getElementById('loader-status-text');
+    if (loader) {
+        if (statusText) statusText.textContent = text || 'Syncing workspace...';
+        loader.style.display = 'flex';
+        loader.classList.remove('fade-out');
+    }
+}
+
+function hidePageLoader() {
+    const loader = document.getElementById('page-loader');
+    if (loader) {
+        loader.classList.add('fade-out');
+        setTimeout(() => {
+            loader.style.display = 'none';
+        }, 500);
+    }
+}
+
 async function checkAuth() {
     try {
         const response = await fetch('/api/me');
         if (response.ok) {
             currentUser = await response.json();
+            showPageLoader("Loading session workspace...");
             setupUserSessionUI();
+            
+            // Backup active state
+            backupAllUserData();
         } else {
+            // Auto-login with Remember Me
+            if (localStorage.getItem('residueguard_remember') === 'true') {
+                const username = localStorage.getItem('residueguard_remembered_username');
+                const registry = JSON.parse(localStorage.getItem('residueguard_local_registry') || '{}');
+                if (username && registry[username]) {
+                    const credentials = registry[username];
+                    document.getElementById('login-username').value = credentials.username;
+                    if (document.getElementById('login-email')) {
+                        document.getElementById('login-email').value = credentials.email || '';
+                    }
+                    document.getElementById('login-password').value = credentials.password;
+                    
+                    // Silent auto-login trigger
+                    submitLogin();
+                    return;
+                }
+            }
             currentUser = null;
             document.getElementById('login-container').style.display = 'flex';
             document.getElementById('app-container').style.display = 'none';
@@ -167,40 +402,116 @@ async function checkAuth() {
 }
 
 async function submitLogin(e) {
-    e.preventDefault();
+    if (e) e.preventDefault();
     const usernameInput = document.getElementById('login-username').value;
+    const emailInput = document.getElementById('login-email').value;
     const passwordInput = document.getElementById('login-password').value;
     const errorEl = document.getElementById('login-error-msg');
     
     errorEl.style.display = 'none';
     
+    // Add loading spinner to auth button
+    const submitBtn = document.querySelector('#form-login button[type="submit"]');
+    if (submitBtn) submitBtn.classList.add('loading');
+    
+    showPageLoader("Authenticating credentials...");
+    
     try {
         const response = await fetch('/api/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: usernameInput, password: passwordInput })
+            body: JSON.stringify({ username: usernameInput, email: emailInput, password: passwordInput })
         });
         
         if (response.ok) {
             const data = await response.json();
             currentUser = data.user;
+            
+            // Save to local registry (needed for self-healing and remember me)
+            const registry = JSON.parse(localStorage.getItem('residueguard_local_registry') || '{}');
+            registry[usernameInput] = { username: usernameInput, email: emailInput, password: passwordInput };
+            localStorage.setItem('residueguard_local_registry', JSON.stringify(registry));
+            
+            // Handle Remember Me setting
+            const rememberMe = document.getElementById('login-remember').checked;
+            if (rememberMe) {
+                localStorage.setItem('residueguard_remember', 'true');
+                localStorage.setItem('residueguard_remembered_username', usernameInput);
+            } else {
+                localStorage.removeItem('residueguard_remember');
+                localStorage.removeItem('residueguard_remembered_username');
+            }
+            
             document.getElementById('form-login').reset();
+            if (submitBtn) submitBtn.classList.remove('loading');
+            
+            showPageLoader("Loading dashboard metrics...");
             setupUserSessionUI();
+            showToast("Welcome Back!", `Signed in successfully as ${currentUser.username}.`, "success");
+            
+            // Run background backup
+            backupAllUserData();
         } else {
+            // Suspicious login failure - check local registry to see if DB was wiped
+            const registry = JSON.parse(localStorage.getItem('residueguard_local_registry') || '{}');
+            if (registry[usernameInput] && registry[usernameInput].password === passwordInput) {
+                showPageLoader("Re-creating farm workspace...");
+                
+                // Construct a fallback email if emailInput is missing (e.g. from an old registry)
+                const registerEmail = emailInput || registry[usernameInput].email || (usernameInput.includes('@') ? usernameInput : `${usernameInput}@farm.com`);
+                
+                // Silent re-registration
+                const r_res = await fetch('/api/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: usernameInput, email: registerEmail, password: passwordInput })
+                });
+                
+                if (r_res.ok) {
+                    // Try silent login again
+                    const l_res = await fetch('/api/login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username: usernameInput, email: registerEmail, password: passwordInput })
+                    });
+                    
+                    if (l_res.ok) {
+                        const data = await l_res.json();
+                        currentUser = data.user;
+                        
+                        document.getElementById('form-login').reset();
+                        if (submitBtn) submitBtn.classList.remove('loading');
+                        
+                        showPageLoader("Restoring cached data logs...");
+                        setupUserSessionUI();
+                        showToast("Account Recovered", "Your account has been recreated on the server.", "success");
+                        
+                        // Restore farm data
+                        await restoreUserData(usernameInput);
+                        return;
+                    }
+                }
+            }
+            
+            hidePageLoader();
             const data = await response.json();
             errorEl.textContent = data.error || "Invalid username or password";
             errorEl.style.display = 'block';
+            if (submitBtn) submitBtn.classList.remove('loading');
         }
     } catch (err) {
+        hidePageLoader();
         console.error("Login request failed:", err);
         errorEl.textContent = "Server connection error.";
         errorEl.style.display = 'block';
+        if (submitBtn) submitBtn.classList.remove('loading');
     }
 }
 
 async function submitRegister(e) {
     e.preventDefault();
     const usernameInput = document.getElementById('register-username').value;
+    const emailInput = document.getElementById('register-email').value;
     const passwordInput = document.getElementById('register-password').value;
     const confirmInput = document.getElementById('register-confirm-password').value;
     
@@ -216,51 +527,69 @@ async function submitRegister(e) {
         return;
     }
     
+    const submitBtn = document.querySelector('#form-register button[type="submit"]');
+    if (submitBtn) submitBtn.classList.add('loading');
+    
     try {
         const response = await fetch('/api/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: usernameInput, password: passwordInput })
+            body: JSON.stringify({ username: usernameInput, email: emailInput, password: passwordInput })
         });
         
         if (response.ok) {
             const data = await response.json();
+            
+            // Save to local registry for database reset protection
+            const registry = JSON.parse(localStorage.getItem('residueguard_local_registry') || '{}');
+            registry[usernameInput] = { username: usernameInput, email: emailInput, password: passwordInput };
+            localStorage.setItem('residueguard_local_registry', JSON.stringify(registry));
+            
             successEl.textContent = data.message || "Registration successful!";
             successEl.style.display = 'block';
             document.getElementById('form-register').reset();
+            if (submitBtn) submitBtn.classList.remove('loading');
             
-            // Auto slide back to login form after 1.5 seconds
+            showToast("Success", "Standard account created successfully!", "success");
+            
+            // Card-flip back to login panel and prefill credentials
             setTimeout(() => {
                 toggleAuthForms();
-            }, 1500);
+                document.getElementById('login-username').value = usernameInput;
+                if (document.getElementById('login-email')) {
+                    document.getElementById('login-email').value = emailInput;
+                }
+                document.getElementById('login-password').value = passwordInput;
+            }, 1200);
         } else {
             const data = await response.json();
             errorEl.textContent = data.error || "Registration failed.";
             errorEl.style.display = 'block';
+            if (submitBtn) submitBtn.classList.remove('loading');
         }
     } catch (err) {
         console.error("Registration failed:", err);
         errorEl.textContent = "Server connection error.";
         errorEl.style.display = 'block';
+        if (submitBtn) submitBtn.classList.remove('loading');
     }
 }
 
 function toggleAuthForms(e) {
     if (e) e.preventDefault();
-    const loginWrapper = document.getElementById('login-form-wrapper');
-    const registerWrapper = document.getElementById('register-form-wrapper');
+    const loginCard = document.getElementById('login-card');
     
-    // Clear validation messages on toggle
-    document.getElementById('login-error-msg').style.display = 'none';
-    document.getElementById('register-error-msg').style.display = 'none';
-    document.getElementById('register-success-msg').style.display = 'none';
+    // Clear validation messages safely
+    const loginError = document.getElementById('login-error-msg');
+    const registerError = document.getElementById('register-error-msg');
+    const registerSuccess = document.getElementById('register-success-msg');
     
-    if (loginWrapper.style.display === 'none') {
-        registerWrapper.style.display = 'none';
-        loginWrapper.style.display = 'block';
-    } else {
-        loginWrapper.style.display = 'none';
-        registerWrapper.style.display = 'block';
+    if (loginError) loginError.style.display = 'none';
+    if (registerError) registerError.style.display = 'none';
+    if (registerSuccess) registerSuccess.style.display = 'none';
+    
+    if (loginCard) {
+        loginCard.classList.toggle('flipped');
     }
 }
 
@@ -269,34 +598,73 @@ async function triggerLogout() {
     try {
         await fetch('/api/logout', { method: 'POST' });
         currentUser = null;
+        
+        // Remove remember me flags on explicit logout
+        localStorage.removeItem('residueguard_remember');
+        localStorage.removeItem('residueguard_remembered_username');
+        
         document.getElementById('app-container').style.display = 'none';
         document.getElementById('login-container').style.display = 'flex';
-        // Force view back to sign-in panel
-        const loginWrapper = document.getElementById('login-form-wrapper');
-        const registerWrapper = document.getElementById('register-form-wrapper');
-        loginWrapper.style.display = 'block';
-        registerWrapper.style.display = 'none';
+        
+        const loginCard = document.getElementById('login-card');
+        if (loginCard) {
+            loginCard.classList.remove('flipped');
+        }
     } catch (err) {
         console.error("Logout failed:", err);
     }
 }
 
+async function triggerEmailReport() {
+    showPageLoader("Sending warning alerts report...");
+    try {
+        const response = await fetch('/api/send-alert-emails', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            showToast("Emails Sent", `Dispatched compliance alert emails to ${data.emails_processed} registered users successfully. Check local 'sent_emails.log' if SMTP is not configured.`, "success");
+        } else {
+            const data = await response.json();
+            showToast("Email Error", data.error || "Failed to send alert emails.", "error");
+        }
+    } catch (err) {
+        console.error("Email report trigger failed:", err);
+        showToast("Connection Error", "Failed to connect to email trigger API.", "error");
+    } finally {
+        hidePageLoader();
+    }
+}
+
 function setupUserSessionUI() {
-    if (!currentUser) return;
-    
-    document.getElementById('login-container').style.display = 'none';
-    document.getElementById('app-container').style.display = 'flex';
-    
-    document.getElementById('user-display-name').textContent = currentUser.username;
-    document.getElementById('user-display-role').textContent = currentUser.role === 'Admin' ? 'Administrator' : 'Standard User';
-    document.getElementById('user-avatar').textContent = currentUser.username.slice(0, 2).toUpperCase();
-    
-    const isAdmin = currentUser.role === 'Admin';
-    document.querySelectorAll('.admin-only').forEach(el => {
-        el.style.display = isAdmin ? 'inline-flex' : 'none';
-    });
-    
-    loadDashboard();
+    try {
+        if (!currentUser) return;
+        
+        document.getElementById('login-container').style.display = 'none';
+        document.getElementById('app-container').style.display = 'flex';
+        
+        const username = currentUser.username || 'User';
+        const role = currentUser.role || 'Operator';
+        const email = currentUser.email || 'No email registered';
+        
+        document.getElementById('user-display-name').textContent = username;
+        document.getElementById('user-display-role').textContent = role === 'Admin' ? 'Administrator' : 'Standard User';
+        document.getElementById('user-display-email').textContent = email;
+        document.getElementById('user-avatar').textContent = username.slice(0, 2).toUpperCase();
+        
+        const isAdmin = role === 'Admin';
+        document.querySelectorAll('.admin-only').forEach(el => {
+            el.style.display = isAdmin ? 'inline-flex' : 'none';
+        });
+        
+        loadDashboard();
+    } catch (err) {
+        console.error("UI setup crashed:", err);
+        hidePageLoader();
+        showToast("Session Error", "Failed to display workspace layout.", "error");
+    }
 }
 
 // -------------------- API INTEGRATIONS --------------------
@@ -305,7 +673,10 @@ function setupUserSessionUI() {
 async function loadDashboard() {
     try {
         const response = await apiFetch('/api/analytics');
-        if (!response) return;
+        if (!response) {
+            hidePageLoader();
+            return;
+        }
         
         analyticsData = await response.json();
         
@@ -346,7 +717,10 @@ async function loadDashboard() {
         quickTable.innerHTML = '';
         
         const livestockRes = await apiFetch('/api/livestock');
-        if (!livestockRes) return;
+        if (!livestockRes) {
+            hidePageLoader();
+            return;
+        }
         const livestock = await livestockRes.json();
         
         const activeAnimals = livestock.filter(a => a.status !== 'Healthy');
@@ -389,6 +763,8 @@ async function loadDashboard() {
         
     } catch (err) {
         console.error("Error loading dashboard data:", err);
+    } finally {
+        hidePageLoader();
     }
 }
 
@@ -437,12 +813,12 @@ function renderAMUTrendChart(monthlyData) {
             maintainAspectRatio: false,
             scales: {
                 x: {
-                    grid: { color: 'rgba(255,255,255,0.05)' },
+                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
                     ticks: { color: '#9ca3af', font: { family: 'Inter' } }
                 },
                 y: {
                     position: 'left',
-                    grid: { color: 'rgba(255,255,255,0.05)' },
+                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
                     ticks: { color: '#9ca3af', font: { family: 'Inter' } },
                     title: { display: true, text: 'Medication Vol (mg)', color: '#06b6d4' }
                 },
@@ -745,9 +1121,11 @@ async function submitLivestock(e) {
             closeModal('modal-add-livestock');
             document.getElementById('form-add-livestock').reset();
             loadLivestock();
+            showToast("Animal Registered", `Livestock ${data.tag_id} was successfully registered.`, "success");
+            backupAllUserData();
         } else if (response) {
             const err = await response.json();
-            alert(err.error || "Failed to register livestock");
+            showToast("Failed to Register", err.error || "Failed to register livestock", "error");
         }
     } catch (err) {
         console.error("Error registering animal:", err);
@@ -779,9 +1157,11 @@ async function submitDrug(e) {
             closeModal('modal-add-drug');
             document.getElementById('form-add-drug').reset();
             loadDrugs();
+            showToast("Drug Reference Created", `Drug reference sheet for ${data.name} was successfully created.`, "success");
+            backupAllUserData();
         } else if (response) {
             const err = await response.json();
-            alert(err.error || "Failed to create drug sheet");
+            showToast("Failed to Create Drug", err.error || "Failed to create drug sheet", "error");
         }
     } catch (err) {
         console.error("Error adding drug reference:", err);
@@ -815,12 +1195,15 @@ async function submitTreatment(e) {
             if (activeNav === 'dashboard') loadDashboard();
             else if (activeNav === 'treatments') loadTreatments();
             else if (activeNav === 'livestock') loadLivestock();
+            
+            showToast("Treatment Logged", "Medication event was successfully logged.", "success");
+            backupAllUserData();
         } else if (response) {
             const err = await response.json();
-            alert(err.error || "Failed to log treatment");
+            showToast("Failed to Log Treatment", err.error || "Failed to log treatment", "error");
         }
     } catch (err) {
-        console.error("Error saving treatment:", err);
+        console.error("Error logging treatment:", err);
     }
 }
 
@@ -886,11 +1269,11 @@ async function viewDecayModel(treatmentId) {
                     maintainAspectRatio: false,
                     scales: {
                         x: {
-                            grid: { color: 'rgba(255,255,255,0.05)' },
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
                             ticks: { color: '#9ca3af', font: { family: 'Inter' }, maxRotation: 45, minRotation: 45 }
                         },
                         y: {
-                            grid: { color: 'rgba(255,255,255,0.05)' },
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
                             ticks: { color: '#9ca3af', font: { family: 'Inter' } },
                             title: { display: true, text: 'Residue Concentration (ppb)', color: '#f3f4f6' }
                         }
@@ -995,11 +1378,11 @@ function renderWHOChart(whoUsage) {
             maintainAspectRatio: false,
             scales: {
                 x: {
-                    grid: { color: 'rgba(255,255,255,0.05)' },
+                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
                     ticks: { color: '#9ca3af', font: { family: 'Inter' } }
                 },
                 y: {
-                    grid: { color: 'rgba(255,255,255,0.05)' },
+                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
                     ticks: { color: '#9ca3af', font: { family: 'Inter' } }
                 }
             },

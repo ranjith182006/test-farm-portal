@@ -11,79 +11,163 @@
 </head>
 <body>
 
+    <!-- ==================== PREMIUM PAGE LOADER ==================== -->
+    <div id="page-loader" class="page-loader" style="display: none;">
+        <div class="loader-content">
+            <div class="loader-spinner-ring"></div>
+            <div class="loader-logo">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    <path d="M12 8v8"/>
+                    <path d="M8 12h8"/>
+                </svg>
+            </div>
+            <div class="loader-text" id="loader-status-text">Syncing workspace...</div>
+        </div>
+    </div>
+
     <!-- ==================== LOGIN CONTAINER ==================== -->
     <div id="login-container" class="login-layout">
-        <div class="login-card">
-            <div class="login-brand">
-                <div class="brand-logo">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                        <path d="M12 8v8"/>
-                        <path d="M8 12h8"/>
-                    </svg>
-                </div>
-                <span class="brand-name">ResidueGuard</span>
-            </div>
-            
-            <!-- Sign In Panel -->
-            <div id="login-form-wrapper" class="auth-panel-active">
-                <h2 class="login-heading">Sign in to Farm Portal</h2>
-                <form id="form-login" onsubmit="submitLogin(event)">
-                    <div class="form-group">
-                        <label class="form-label">Username</label>
-                        <input type="text" id="login-username" class="form-input" placeholder="e.g. admin" required autocomplete="username">
+        <div class="login-wrapper">
+            <!-- Left Side: Interactive Portal Branding and Telemetry Visuals -->
+            <div class="login-banner">
+                <div class="banner-image" style="background-image: url('/static/login_bg.png');"></div>
+                <div class="banner-overlay"></div>
+                <div class="banner-info">
+                    <div class="banner-logo">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                            <path d="M12 8v8"/>
+                            <path d="M8 12h8"/>
+                        </svg>
                     </div>
-                    <div class="form-group" style="margin-bottom: 20px;">
-                        <label class="form-label">Password</label>
-                        <input type="password" id="login-password" class="form-input" placeholder="••••••••" required autocomplete="current-password">
+                    <h1 class="banner-title">ResidueGuard</h1>
+                    <p class="banner-subtitle">Antimicrobial Usage & MRL Compliance Tracking Portal</p>
+                    <div class="banner-features">
+                        <div class="feature-item">
+                            <span class="feature-dot"></span>
+                            <span>Real-Time Residue Decay Modeling</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-dot"></span>
+                            <span>Autonomous Multi-Tenant Partitioning</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-dot"></span>
+                            <span>Second-by-Second Withdrawal Countdown</span>
+                        </div>
                     </div>
-                    
-                    <div id="login-error-msg" class="login-error" style="display: none; color: var(--color-rose); font-size: 13px; margin-bottom: 16px; font-weight: 500;">
-                        Invalid username or password
-                    </div>
-                    
-                    <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center; height: 44px;">
-                        Sign In
-                    </button>
-                </form>
-                <div style="margin-top: 20px; text-align: center; font-size: 13px; color: var(--text-secondary);">
-                    Don't have an account? <a href="#" onclick="toggleAuthForms(event)" style="color: var(--color-primary); text-decoration: none; font-weight: 600;">Register here</a>
                 </div>
             </div>
 
-            <!-- Registration Panel -->
-            <div id="register-form-wrapper" style="display: none;">
-                <h2 class="login-heading">Create Standard Account</h2>
-                <form id="form-register" onsubmit="submitRegister(event)">
-                    <div class="form-group">
-                        <label class="form-label">Username</label>
-                        <input type="text" id="register-username" class="form-input" placeholder="e.g. vet_assistant" required minlength="3">
+            <!-- Right Side: Rotatable Login Card -->
+            <div class="login-card-container">
+                <div class="login-card" id="login-card">
+                    <div class="login-card-inner" id="login-card-inner">
+                        
+                        <!-- FRONT: SIGN IN -->
+                        <div class="login-card-side login-card-front" id="login-form-wrapper">
+                            <div class="login-brand">
+                                <div class="brand-logo">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                                        <path d="M12 8v8"/>
+                                        <path d="M8 12h8"/>
+                                    </svg>
+                                </div>
+                                <span class="brand-name">ResidueGuard</span>
+                            </div>
+                            
+                            <h2 class="login-heading">Sign in to Farm Portal</h2>
+                            <form id="form-login" onsubmit="submitLogin(event)">
+                                <div class="form-group">
+                                    <label class="form-label">Username</label>
+                                    <input type="text" id="login-username" class="form-input" placeholder="e.g. admin" required autocomplete="username">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Email Address</label>
+                                    <input type="email" id="login-email" class="form-input" placeholder="e.g. admin@farm.com" required>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Password</label>
+                                    <input type="password" id="login-password" class="form-input" placeholder="••••••••" required autocomplete="current-password">
+                                </div>
+                                
+                                <div class="form-options">
+                                    <label class="checkbox-container">
+                                        <input type="checkbox" id="login-remember" checked>
+                                        <span class="checkmark"></span>
+                                        Remember Me
+                                    </label>
+                                </div>
+                                
+                                <div id="login-error-msg" class="login-error" style="display: none; color: var(--color-rose); font-size: 13px; margin-bottom: 16px; font-weight: 500;">
+                                    Invalid username or password
+                                </div>
+                                
+                                <button type="submit" class="btn btn-primary btn-auth" style="width: 100%; justify-content: center; height: 44px;">
+                                    <span class="btn-text">Sign In</span>
+                                    <span class="spinner" style="display: none;"></span>
+                                </button>
+                            </form>
+                            <div style="margin-top: 20px; text-align: center; font-size: 13px; color: var(--text-secondary);">
+                                Don't have an account? <a href="#" onclick="toggleAuthForms(event)" style="color: var(--color-primary); text-decoration: none; font-weight: 600;">Register here</a>
+                            </div>
+                            
+                            <div class="login-hint">
+                                <p>Default Accounts:</p>
+                                <p>Admin: <strong>admin</strong> / admin123</p>
+                                <p>User: <strong>employe</strong> / worker</p>
+                            </div>
+                        </div>
+
+                        <!-- BACK: REGISTER -->
+                        <div class="login-card-side login-card-back" id="register-form-wrapper">
+                            <div class="login-brand">
+                                <div class="brand-logo">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                                        <path d="M12 8v8"/>
+                                        <path d="M8 12h8"/>
+                                    </svg>
+                                </div>
+                                <span class="brand-name">ResidueGuard</span>
+                            </div>
+
+                            <h2 class="login-heading">Create Standard Account</h2>
+                            <form id="form-register" onsubmit="submitRegister(event)">
+                                <div class="form-group">
+                                    <label class="form-label">Username</label>
+                                    <input type="text" id="register-username" class="form-input" placeholder="e.g. vet_assistant" required minlength="3">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Email Address</label>
+                                    <input type="email" id="register-email" class="form-input" placeholder="e.g. vet@farm.com" required>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Password</label>
+                                    <input type="password" id="register-password" class="form-input" placeholder="Min 4 characters" required minlength="4">
+                                </div>
+                                <div class="form-group" style="margin-bottom: 20px;">
+                                    <label class="form-label">Confirm Password</label>
+                                    <input type="password" id="register-confirm-password" class="form-input" placeholder="••••••••" required minlength="4">
+                                </div>
+                                
+                                <div id="register-success-msg" style="display: none; color: var(--color-emerald); font-size: 13px; margin-bottom: 16px; font-weight: 500; text-align: center;"></div>
+                                <div id="register-error-msg" style="display: none; color: var(--color-rose); font-size: 13px; margin-bottom: 16px; font-weight: 500; text-align: center;"></div>
+                                
+                                <button type="submit" class="btn btn-primary btn-auth" style="width: 100%; justify-content: center; height: 44px;">
+                                    <span class="btn-text">Register Account</span>
+                                    <span class="spinner" style="display: none;"></span>
+                                </button>
+                            </form>
+                            <div style="margin-top: 20px; text-align: center; font-size: 13px; color: var(--text-secondary);">
+                                Already have an account? <a href="#" onclick="toggleAuthForms(event)" style="color: var(--color-primary); text-decoration: none; font-weight: 600;">Sign in here</a>
+                            </div>
+                        </div>
+
                     </div>
-                    <div class="form-group">
-                        <label class="form-label">Password</label>
-                        <input type="password" id="register-password" class="form-input" placeholder="Min 4 characters" required minlength="4">
-                    </div>
-                    <div class="form-group" style="margin-bottom: 20px;">
-                        <label class="form-label">Confirm Password</label>
-                        <input type="password" id="register-confirm-password" class="form-input" placeholder="••••••••" required minlength="4">
-                    </div>
-                    
-                    <div id="register-success-msg" style="display: none; color: var(--color-emerald); font-size: 13px; margin-bottom: 16px; font-weight: 500; text-align: center;"></div>
-                    <div id="register-error-msg" style="display: none; color: var(--color-rose); font-size: 13px; margin-bottom: 16px; font-weight: 500; text-align: center;"></div>
-                    
-                    <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center; height: 44px;">
-                        Register Account
-                    </button>
-                </form>
-                <div style="margin-top: 20px; text-align: center; font-size: 13px; color: var(--text-secondary);">
-                    Already have an account? <a href="#" onclick="toggleAuthForms(event)" style="color: var(--color-primary); text-decoration: none; font-weight: 600;">Sign in here</a>
                 </div>
-            </div>
-            
-            <div class="login-hint">
-                <p>Default Accounts:</p>
-                <p>Admin: <strong>admin</strong> / admin123</p>
-                <p>User: <strong>employe</strong> / worker</p>
             </div>
         </div>
     </div>
@@ -149,9 +233,10 @@
 
             <div class="user-profile">
                 <div class="avatar" id="user-avatar">AD</div>
-                <div class="user-info" style="flex-grow: 1;">
+                <div class="user-info" style="flex-grow: 1; overflow: hidden;">
                     <span class="username" id="user-display-name">Admin</span>
                     <span class="role" id="user-display-role">Administrator</span>
+                    <span class="email-display" id="user-display-email" style="font-size: 11px; color: var(--text-muted); display: block; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">-</span>
                 </div>
                 <button class="logout-btn" onclick="triggerLogout()" title="Sign Out">
                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -178,6 +263,12 @@
                         </svg>
                         <span id="current-time">-</span>
                     </div>
+                    <button class="btn btn-secondary" onclick="triggerEmailReport()" title="Dispatch Daily Alert Emails" style="margin-right: 8px;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;">
+                            <path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>
+                        </svg>
+                        Email Alerts
+                    </button>
                     <button class="btn btn-primary admin-only" onclick="openModal('modal-log-treatment')">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                             <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
@@ -647,6 +738,9 @@
             </div>
         </div>
     </div>
+
+    <!-- Glassmorphic Toast Notifications Container -->
+    <div id="toast-container" class="toast-container"></div>
 
     <!-- Custom JS script -->
     <script src="/static/js/app.js"></script>

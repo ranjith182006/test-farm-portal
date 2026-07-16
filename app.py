@@ -7,6 +7,7 @@ import math
 
 app = Flask(__name__)
 app.secret_key = 'super_secret_farm_key_for_residueguard_session_auth'
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
 
 # Initialize database on startup
 database.init_db()
@@ -76,19 +77,22 @@ def index():
 @app.route('/api/login', methods=['POST'])
 def login():
     data = request.json
-    if not data or 'username' not in data or 'password' not in data:
-        return jsonify({"error": "Missing username or password"}), 400
+    if not data or 'username' not in data or 'email' not in data or 'password' not in data:
+        return jsonify({"error": "Missing username, email, or password"}), 400
         
-    username = data['username']
+    username = data['username'].strip()
+    email = data['email'].strip()
     password = data['password']
     
     conn = database.get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
+    # Require both username and email to match!
+    cursor.execute("SELECT * FROM users WHERE username = ? AND email = ?", (username, email))
     user = cursor.fetchone()
     conn.close()
     
     if user and check_password_hash(user['password_hash'], password):
+        session.permanent = True
         session['user_id'] = user['id']
         session['username'] = user['username']
         session['role'] = user['role']
@@ -97,25 +101,29 @@ def login():
             "message": "Login successful",
             "user": {
                 "username": user['username'],
-                "role": user['role']
+                "role": user['role'],
+                "email": user['email']
             }
         }), 200
         
-    return jsonify({"error": "Invalid username or password"}), 401
+    return jsonify({"error": "Invalid credentials. Please verify your username and email address."}), 401
 
 @app.route('/api/register', methods=['POST'])
 def register():
     data = request.json
-    if not data or 'username' not in data or 'password' not in data:
-        return jsonify({"error": "Missing username or password"}), 400
+    if not data or 'username' not in data or 'password' not in data or 'email' not in data:
+        return jsonify({"error": "Missing registration details"}), 400
         
     username = data['username'].strip()
     password = data['password']
+    email = data['email'].strip()
     
     if len(username) < 3:
         return jsonify({"error": "Username must be at least 3 characters long"}), 400
     if len(password) < 4:
         return jsonify({"error": "Password must be at least 4 characters long"}), 400
+    if not email or '@' not in email or '.' not in email:
+        return jsonify({"error": "Please enter a valid email address"}), 400
         
     conn = database.get_db_connection()
     cursor = conn.cursor()
@@ -126,12 +134,18 @@ def register():
         conn.close()
         return jsonify({"error": "Username already exists"}), 400
         
+    # Check if email exists
+    cursor.execute("SELECT id FROM users WHERE email = ?", (email,))
+    if cursor.fetchone():
+        conn.close()
+        return jsonify({"error": "Email address already registered"}), 400
+        
     from werkzeug.security import generate_password_hash
     pw_hash = generate_password_hash(password)
     
     try:
-        # Insert user with a placeholder tenant_id = 0, then update it to match their new user ID
-        cursor.execute("INSERT INTO users (username, password_hash, role, tenant_id) VALUES (?, ?, 'Admin', 0)", (username, pw_hash))
+        # Insert user with email and placeholder tenant_id = 0, then update it to match their new user ID
+        cursor.execute("INSERT INTO users (username, email, password_hash, role, tenant_id) VALUES (?, ?, ?, 'Admin', 0)", (username, email, pw_hash))
         user_id = cursor.lastrowid
         cursor.execute("UPDATE users SET tenant_id = ? WHERE id = ?", (user_id, user_id))
         conn.commit()
@@ -149,9 +163,19 @@ def logout():
 @app.route('/api/me')
 def me():
     if 'user_id' in session:
+        # Fetch email dynamically in case it changed or for session info
+        conn = database.get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT email FROM users WHERE id = ?", (session.get('user_id'),))
+        row = cursor.fetchone()
+        conn.close()
+        
+        email = row['email'] if row else None
+        
         return jsonify({
             "username": session.get('username'),
-            "role": session.get('role')
+            "role": session.get('role'),
+            "email": email
         }), 200
     return jsonify({"error": "Not logged in"}), 401
 
@@ -619,6 +643,262 @@ def handle_analytics():
         "classification_usage": class_usage,
         "monthly_stats": monthly_stats
     })
+
+def send_all_daily_emails():
+    """
+    Query all users in the system, compile their active alerts based on their tenant,
+    and send the formatted daily summary report email.
+    """
+    import smtplib
+    import os
+    import re
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    
+    conn = database.get_db_connection()
+    cursor = conn.cursor()
+    
+    # Get all users who have an email
+    cursor.execute("SELECT id, username, email, tenant_id FROM users WHERE email IS NOT NULL AND email != ''")
+    users = cursor.fetchall()
+    
+    if not users:
+        conn.close()
+        return "No users with registered email addresses found."
+        
+    emails_sent = 0
+    log_messages = []
+    
+    # We will group by tenant_id to avoid querying alerts multiple times for the same tenant
+    tenant_alerts = {}
+    
+    for user in users:
+        username = user['username']
+        user_email = user['email']
+        tenant_id = user['tenant_id']
+        
+        # Ensure dynamic statuses are up-to-date
+        update_livestock_statuses(tenant_id)
+        
+        if tenant_id not in tenant_alerts:
+            # Query non-healthy livestock for this tenant
+            cursor.execute("""
+                SELECT id, tag_id, species, breed, pen_number, status 
+                FROM livestock 
+                WHERE status != 'Healthy' AND tenant_id = ?
+                ORDER BY status DESC, tag_id ASC
+            """, (tenant_id,))
+            livestock_rows = cursor.fetchall()
+            
+            alerts = []
+            now = datetime.now()
+            for row in livestock_rows:
+                # Get the latest treatment to display details
+                cursor.execute("""
+                    SELECT t.end_date, d.name as drug_name, d.withdrawal_meat_days, d.withdrawal_milk_days, d.withdrawal_eggs_days
+                    FROM treatments t
+                    JOIN drugs d ON t.drug_id = d.id
+                    WHERE t.livestock_id = ? AND t.tenant_id = ?
+                    ORDER BY t.end_date DESC LIMIT 1
+                """, (row['id'], tenant_id))
+                t_row = cursor.fetchone()
+                
+                drug_name = "N/A"
+                clearance_date = "N/A"
+                remaining_time = "N/A"
+                
+                if t_row:
+                    drug_name = t_row['drug_name']
+                    end_dt = datetime.strptime(t_row['end_date'], '%Y-%m-%d %H:%M:%S')
+                    w_days = max(t_row['withdrawal_meat_days'], t_row['withdrawal_milk_days'], t_row['withdrawal_eggs_days'])
+                    clear_dt = end_dt + timedelta(days=w_days)
+                    clearance_date = clear_dt.strftime('%Y-%m-%d %H:%M:%S')
+                    
+                    if clear_dt > now:
+                        diff = clear_dt - now
+                        days = diff.days
+                        hours = diff.seconds // 3600
+                        remaining_time = f"{days}d {hours}h remaining"
+                    else:
+                        remaining_time = "Clearance reached"
+                elif row['status'] == 'Quarantine':
+                    remaining_time = "Manual Quarantine Active"
+                    
+                alerts.append({
+                    "tag_id": row['tag_id'],
+                    "species": row['species'],
+                    "breed": row['breed'],
+                    "pen_number": row['pen_number'],
+                    "status": row['status'],
+                    "drug_name": drug_name,
+                    "clearance_date": clearance_date,
+                    "remaining_time": remaining_time
+                })
+            tenant_alerts[tenant_id] = alerts
+            
+        alerts = tenant_alerts[tenant_id]
+        
+        # Build email content
+        subject = f"[ResidueGuard] Daily Withdrawal & MRL Compliance Alert - {datetime.now().strftime('%Y-%m-%d')}"
+        
+        html_content = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; color: #333; line-height: 1.6; background-color: #f4f5f7; padding: 20px;">
+            <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; border: 1px solid #e1e4e8; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
+                <div style="background: linear-gradient(135deg, #0891b2, #0284c7); padding: 24px; color: #ffffff; text-align: center;">
+                    <h2 style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: 0.5px;">ResidueGuard Alerts</h2>
+                    <p style="margin: 4px 0 0 0; opacity: 0.9; font-size: 14px;">Daily Farm Compliance & Withdrawal Summary</p>
+                </div>
+                <div style="padding: 24px;">
+                    <p style="font-size: 16px; margin-top: 0;">Hello <strong>{username}</strong>,</p>
+                    <p>Below is your scheduled daily status report for tenant account <strong>#{tenant_id}</strong>. Please ensure all animals listed under withdrawal do not enter the commercial food supply chain until their respective clearance dates.</p>
+        """
+        
+        if not alerts:
+            html_content += """
+                    <div style="background-color: #ecfdf5; border-left: 4px solid #10b981; padding: 16px; border-radius: 4px; margin: 20px 0;">
+                        <h4 style="margin: 0; color: #065f46; font-size: 15px;">🎉 All Compliant</h4>
+                        <p style="margin: 4px 0 0 0; color: #047857; font-size: 13px;">No animals are currently treated, in withdrawal, or quarantined. All livestock are eligible for standard transport and sale.</p>
+                    </div>
+            """
+        else:
+            html_content += f"""
+                    <div style="background-color: #fffbeb; border-left: 4px solid #d97706; padding: 16px; border-radius: 4px; margin: 20px 0;">
+                        <h4 style="margin: 0; color: #92400e; font-size: 15px;">⚠️ Active Warning Alerts ({len(alerts)})</h4>
+                        <p style="margin: 4px 0 0 0; color: #b45309; font-size: 13px;">The following livestock require active withholding or quarantine monitoring.</p>
+                    </div>
+                    
+                    <table style="width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 13px;">
+                        <thead>
+                            <tr style="background-color: #f8fafc; border-bottom: 2px solid #e2e8f0; text-align: left;">
+                                <th style="padding: 10px; font-weight: 600;">Animal Tag</th>
+                                <th style="padding: 10px; font-weight: 600;">Status</th>
+                                <th style="padding: 10px; font-weight: 600;">Location</th>
+                                <th style="padding: 10px; font-weight: 600;">Drug Used</th>
+                                <th style="padding: 10px; font-weight: 600;">Withhold Info</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            """
+            for alert in alerts:
+                status_color = "#e11d48" if alert['status'] == 'Quarantine' else ("#d97706" if alert['status'] == 'In Withdrawal' else "#2563eb")
+                status_bg = "#fff1f2" if alert['status'] == 'Quarantine' else ("#fffbeb" if alert['status'] == 'In Withdrawal' else "#eff6ff")
+                
+                html_content += f"""
+                            <tr style="border-bottom: 1px solid #e2e8f0;">
+                                <td style="padding: 12px 10px;"><strong>{alert['tag_id']}</strong><br><span style="color: #64748b; font-size: 11px;">{alert['species']} ({alert['breed']})</span></td>
+                                <td style="padding: 12px 10px;"><span style="background-color: {status_bg}; color: {status_color}; padding: 3px 8px; border-radius: 12px; font-weight: 600; font-size: 11px;">{alert['status']}</span></td>
+                                <td style="padding: 12px 10px;">{alert['pen_number']}</td>
+                                <td style="padding: 12px 10px;">{alert['drug_name']}</td>
+                                <td style="padding: 12px 10px;"><strong>{alert['remaining_time']}</strong><br><span style="color: #64748b; font-size: 10px;">Clearance: {alert['clearance_date']}</span></td>
+                            </tr>
+                """
+            html_content += """
+                        </tbody>
+                    </table>
+            """
+            
+        html_content += """
+                    <div style="margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 15px; font-size: 12px; color: #64748b; text-align: center;">
+                        <p>This is an automated warning message from your ResidueGuard portal.</p>
+                        <p>&copy; 2026 ResidueGuard Ltd. All rights reserved.</p>
+                    </div>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        smtp_sent = False
+        smtp_error = ""
+        
+        smtp_host = os.environ.get("SMTP_HOST", "localhost")
+        smtp_port = int(os.environ.get("SMTP_PORT", "587"))
+        smtp_user = os.environ.get("SMTP_USER", "")
+        smtp_pass = os.environ.get("SMTP_PASSWORD", "")
+        smtp_from = os.environ.get("SMTP_FROM", "alerts@residueguard.farm")
+        
+        if smtp_user:
+            try:
+                msg = MIMEMultipart('alternative')
+                msg['Subject'] = subject
+                msg['From'] = smtp_from
+                msg['To'] = user_email
+                msg.attach(MIMEText(html_content, 'html'))
+                
+                server = smtplib.SMTP(smtp_host, smtp_port, timeout=5)
+                if smtp_pass:
+                    server.starttls()
+                    server.login(smtp_user, smtp_pass)
+                server.sendmail(smtp_from, [user_email], msg.as_string())
+                server.quit()
+                smtp_sent = True
+            except Exception as e:
+                smtp_error = str(e)
+                
+        # Write to log file ALWAYS as a local transaction receipt / visual fallback
+        try:
+            log_dir = os.path.dirname(database.DB_PATH)
+            sent_emails_path = os.path.join(log_dir, 'sent_emails.log')
+            with open(sent_emails_path, 'a', encoding='utf-8') as f:
+                f.write(f"\n========================================\n")
+                f.write(f"TIMESTAMP: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write(f"TO: {username} <{user_email}>\n")
+                f.write(f"SUBJECT: {subject}\n")
+                f.write(f"SMTP SENT: {smtp_sent} (Error: {smtp_error if not smtp_sent else 'None'})\n")
+                f.write(f"----------------------------------------\n")
+                text_preview = re.sub('<[^<]+?>', '', html_content)
+                text_preview = "\n".join([line.strip() for line in text_preview.splitlines() if line.strip()])
+                f.write(text_preview)
+                f.write(f"\n========================================\n")
+        except Exception as log_ex:
+            print("Failed to write sent email log:", log_ex)
+            
+        emails_sent += 1
+        log_messages.append({
+            "username": username,
+            "email": user_email,
+            "success": True,
+            "smtp_sent": smtp_sent,
+            "smtp_error": smtp_error
+        })
+        
+    conn.close()
+    return {
+        "status": "success",
+        "emails_processed": emails_sent,
+        "details": log_messages
+    }
+
+@app.route('/api/send-alert-emails', methods=['POST'])
+def handle_manual_email_alerts():
+    if 'user_id' not in session:
+        return jsonify({"error": "Unauthorized. Please log in."}), 401
+    
+    result = send_all_daily_emails()
+    if isinstance(result, str):
+        return jsonify({"error": result}), 400
+        
+    return jsonify(result), 200
+
+# Background Daemon Scheduler for Daily Email alerts
+import threading
+import time
+
+def run_daily_email_scheduler():
+    """
+    Run an infinite loop in a background daemon thread that triggers email alerts
+    every 24 hours.
+    """
+    while True:
+        try:
+            send_all_daily_emails()
+        except Exception as e:
+            print("Error in daily email scheduler:", e)
+        time.sleep(24 * 3600)
+
+scheduler_thread = threading.Thread(target=run_daily_email_scheduler, daemon=True)
+scheduler_thread.start()
 
 if __name__ == '__main__':
     app.run(debug=True, host='127.0.0.1', port=5000)

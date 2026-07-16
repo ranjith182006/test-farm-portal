@@ -19,12 +19,19 @@ def init_db():
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT UNIQUE NOT NULL,
+        email TEXT,
         password_hash TEXT NOT NULL,
         role TEXT NOT NULL, -- 'Admin' or 'User'
         tenant_id INTEGER NOT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
     ''')
+    
+    # Run dynamic schema migration if table exists but email column is missing
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN email TEXT")
+    except sqlite3.OperationalError:
+        pass # Column already exists
     
     # 2. Create DRUGS table
     cursor.execute('''
@@ -98,12 +105,12 @@ def init_db():
 
 def seed_users(cursor):
     users = [
-        ("admin", generate_password_hash("admin123"), "Admin", 1),
-        ("employe", generate_password_hash("worker"), "User", 1)
+        ("admin", "admin@farm.com", generate_password_hash("admin123"), "Admin", 1),
+        ("employe", "worker@farm.com", generate_password_hash("worker"), "User", 1)
     ]
     cursor.executemany('''
-        INSERT INTO users (username, password_hash, role, tenant_id)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO users (username, email, password_hash, role, tenant_id)
+        VALUES (?, ?, ?, ?, ?)
     ''', users)
 
 def seed_data(cursor):
